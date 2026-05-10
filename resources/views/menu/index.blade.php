@@ -13,11 +13,10 @@
 @endsection
 
 @section('header_actions')
-    <button @click="openOrders()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition hidden lg:block">
+    <button @click="openOrders()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition hidden lg:flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
         Đơn của tôi
-    </button>
-    <button @click="callWaiter()" class="px-4 py-2 bg-tc text-white font-bold rounded-xl text-sm shadow-tc transition active:scale-95 hidden lg:flex items-center gap-2">
-        <span>🔔</span> Gọi nhân viên
+        <span x-show="orders.length > 0" class="ml-1 bg-tc text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full" x-text="orders.length"></span>
     </button>
 @endsection
 
@@ -407,40 +406,113 @@
         <div x-show="ordersOpen" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95 translate-y-4" x-transition:enter-end="opacity-100 scale-100 translate-y-0" class="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
             
             <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-white z-10">
-                <h2 class="text-xl font-extrabold text-slate-900">Đơn hàng của tôi</h2>
+                <div>
+                    <h2 class="text-xl font-extrabold text-slate-900">Đơn hàng của tôi</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Cập nhật tự động mỗi 30 giây</p>
+                </div>
                 <button @click="ordersOpen = false" class="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center text-slate-600 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
             </div>
 
             <div class="flex-1 overflow-y-auto p-5 bg-slate-50 space-y-4">
-                <template x-if="ordersLoading"><div class="text-center py-10 text-slate-400 font-medium animate-pulse">Đang tải...</div></template>
+                <template x-if="ordersLoading && orders.length === 0">
+                    <div class="space-y-4">
+                        <template x-for="i in [1,2]" :key="i">
+                            <div class="bg-white rounded-2xl border border-slate-100 p-4 space-y-3 animate-pulse">
+                                <div class="flex justify-between">
+                                    <div class="h-4 w-28 bg-slate-200 rounded"></div>
+                                    <div class="h-6 w-20 bg-slate-200 rounded-full"></div>
+                                </div>
+                                <div class="h-3 w-full bg-slate-100 rounded"></div>
+                                <div class="h-3 w-3/4 bg-slate-100 rounded"></div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
                 <template x-if="!ordersLoading && orders.length === 0">
                     <div class="text-center py-16">
-                        <span class="text-6xl mb-4 block opacity-50">🧾</span>
-                        <p class="text-slate-500 font-medium">Bạn chưa có đơn hàng nào</p>
+                        <div class="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        </div>
+                        <p class="text-slate-600 font-bold text-lg">Chưa có đơn hàng nào</p>
+                        <p class="text-slate-400 text-sm mt-1">Hãy chọn món và đặt hàng để theo dõi trạng thái</p>
+                        <button @click="ordersOpen = false" class="mt-5 px-6 py-2.5 bg-tc text-white font-bold rounded-xl text-sm shadow-tc active:scale-95 transition">Xem thực đơn</button>
                     </div>
                 </template>
                 
-                <template x-if="!ordersLoading">
+                <template x-if="orders.length > 0">
                     <template x-for="order in orders" :key="order.id">
-                        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                            <div class="p-4 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
-                                <div><span class="font-bold text-slate-700" x-text="'#' + order.order_code"></span><span class="ml-2 text-xs text-slate-400" x-text="order.created_at"></span></div>
-                                <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700" x-text="order.status_label"></span>
+                        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+                            {{-- Order Header --}}
+                            <div class="p-4 flex justify-between items-start">
+                                <div>
+                                    <span class="font-extrabold text-slate-800 text-base" x-text="'Đơn #' + order.order_code"></span>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <span class="text-xs text-slate-400" x-text="order.created_at"></span>
+                                    </div>
+                                </div>
+                                {{-- Dynamic status badge by order status --}}
+                                <span class="text-xs font-bold px-3 py-1.5 rounded-full"
+                                    :class="{
+                                        'bg-amber-100 text-amber-700': order.status === 'pending',
+                                        'bg-blue-100 text-blue-700': order.status === 'confirmed',
+                                        'bg-orange-100 text-orange-700': order.status === 'preparing',
+                                        'bg-green-100 text-green-700': order.status === 'ready',
+                                        'bg-slate-100 text-slate-600': order.status === 'served',
+                                    }"
+                                    x-text="order.status_label"
+                                ></span>
                             </div>
-                            <div class="p-4 space-y-3">
-                                <template x-for="item in order.items">
-                                    <div class="flex items-start gap-3 text-sm">
-                                        <div class="w-7 h-7 rounded-lg bg-slate-100 font-bold flex items-center justify-center shrink-0" x-text="item.quantity"></div>
-                                        <div class="flex-1">
-                                            <p class="font-semibold text-slate-800" x-text="item.name"></p>
-                                            <p x-show="item.note" class="text-xs text-slate-500 italic mt-0.5" x-text="'Ghi chú: ' + item.note"></p>
+
+                            {{-- Status Progress Bar --}}
+                            <div class="px-4 pb-4">
+                                <div class="flex items-center gap-1">
+                                    <template x-for="(step, si) in [
+                                        {key:'pending', label:'Chờ'},
+                                        {key:'confirmed', label:'Xác nhận'},
+                                        {key:'preparing', label:'Làm'},
+                                        {key:'ready', label:'Sẵn sàng'},
+                                        {key:'served', label:'Phục vụ'}
+                                    ]" :key="si">
+                                        <div class="flex flex-col items-center flex-1">
+                                            <div class="w-full h-1.5 rounded-full mb-1"
+                                                :class="getStepIndex(order.status) >= si ? 'bg-tc' : 'bg-slate-200'"
+                                            ></div>
+                                            <span class="text-[9px] font-bold"
+                                                :class="getStepIndex(order.status) >= si ? 'tc' : 'text-slate-300'"
+                                                x-text="step.label"
+                                            ></span>
                                         </div>
-                                        <span class="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-600" x-text="{pending:'Chờ',preparing:'Đang làm',ready:'Xong',served:'Phục vụ'}[item.status] || item.status"></span>
+                                    </template>
+                                </div>
+                            </div>
+
+                            {{-- Order Items --}}
+                            <div class="border-t border-slate-100 divide-y divide-slate-50">
+                                <template x-for="item in order.items" :key="item.name">
+                                    <div class="px-4 py-3 flex items-center gap-3">
+                                        <div class="w-7 h-7 rounded-lg bg-tc-soft tc font-extrabold flex items-center justify-center shrink-0 text-sm" x-text="item.quantity"></div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-semibold text-slate-800 leading-snug" x-text="item.name"></p>
+                                            <p x-show="item.note" class="text-xs text-slate-400 italic mt-0.5 truncate" x-text="item.note"></p>
+                                        </div>
+                                        <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg shrink-0"
+                                            :class="{
+                                                'bg-amber-100 text-amber-600': item.status === 'pending',
+                                                'bg-orange-100 text-orange-600': item.status === 'preparing',
+                                                'bg-green-100 text-green-600': item.status === 'ready',
+                                                'bg-slate-100 text-slate-500': item.status === 'served',
+                                            }"
+                                            x-text="{pending:'⏳ Chờ',preparing:'👨‍🍳 Đang làm',ready:'✅ Xong',served:'🍽️ Đã phục vụ'}[item.status] || item.status"
+                                        ></span>
                                     </div>
                                 </template>
                             </div>
-                            <div class="p-4 border-t border-slate-100 flex justify-between items-center">
-                                <span class="text-sm font-bold text-slate-500">Tổng</span>
+
+                            {{-- Total --}}
+                            <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-500">Tổng cộng</span>
                                 <span class="text-lg font-black tc" x-text="fmt(order.total)"></span>
                             </div>
                         </div>
@@ -448,9 +520,11 @@
                 </template>
             </div>
             
-            <div class="p-4 border-t border-slate-100 bg-white grid grid-cols-2 gap-3 z-10">
-                <button @click="refreshOrders()" class="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">Làm mới</button>
-                <button @click="callWaiter()" class="py-3 bg-tc hover:bg-orange-600 text-white font-bold rounded-xl text-sm transition shadow-tc">🔔 Gọi nhân viên</button>
+            <div class="p-4 border-t border-slate-100 bg-white z-10">
+                <button @click="refreshOrders()" :class="ordersLoading ? 'opacity-60 cursor-wait' : ''" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
+                    <svg :class="ordersLoading ? 'animate-spin' : ''" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span x-text="ordersLoading ? 'Đang làm mới...' : 'Làm mới trạng thái'"></span>
+                </button>
             </div>
         </div>
     </div>
@@ -591,7 +665,10 @@ document.addEventListener('alpine:init', () => {
                 this.orders = (await res.json()).orders || [];
             } catch {} finally { this.ordersLoading = false; }
         },
-        callWaiter() { this.showToast('Đã gọi nhân viên!'); },
+        getStepIndex(status) {
+            const steps = ['pending','confirmed','preparing','ready','served'];
+            return steps.indexOf(status);
+        },
 
         fmt, showToast(message, type = 'success') {
             this.toast = { show: true, message, type };
