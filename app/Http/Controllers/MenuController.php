@@ -48,25 +48,18 @@ class MenuController extends Controller
             ->filter(fn($cat) => $cat->menuItems->count() > 0) // hide empty categories
             ->values();
 
-        // Load active orders for this session so customer can track status
+        // Load orders for this session (tất cả đơn hôm nay để khách theo dõi)
         $sessionOrders = Order::where('session_token', $sessionToken)
-            ->whereNotIn('status', ['completed', 'cancelled'])
             ->with(['items.menuItem:id,name,images'])
             ->orderByDesc('created_at')
+            ->limit(10)
             ->get()
             ->map(function ($o) {
                 return [
                     'id'           => $o->id,
                     'order_code'   => $o->order_code,
                     'status'       => $o->status,
-                    'status_label' => match ($o->status) {
-                        'pending'   => 'Đang chờ xác nhận',
-                        'confirmed' => 'Đã xác nhận',
-                        'preparing' => 'Đang chuẩn bị',
-                        'ready'     => 'Sẵn sàng phục vụ',
-                        'served'    => 'Đã phục vụ',
-                        default     => $o->status,
-                    },
+                    'status_label' => $this->statusLabel($o->status),
                     'total'      => (float) $o->total,
                     'created_at' => $o->created_at->format('H:i'),
                     'items'      => $o->items->map(fn($i) => [
@@ -210,9 +203,9 @@ class MenuController extends Controller
         }
 
         $orders = Order::where('session_token', $sessionToken)
-            ->whereNotIn('status', ['completed', 'cancelled'])
             ->with(['items.menuItem:id,name'])
             ->orderByDesc('created_at')
+            ->limit(10)
             ->get()
             ->map(function ($order) {
                 return [

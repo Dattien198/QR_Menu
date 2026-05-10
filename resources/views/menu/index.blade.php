@@ -458,8 +458,9 @@
                                         'bg-amber-100 text-amber-700': order.status === 'pending',
                                         'bg-blue-100 text-blue-700': order.status === 'confirmed',
                                         'bg-orange-100 text-orange-700': order.status === 'preparing',
-                                        'bg-green-100 text-green-700': order.status === 'ready',
-                                        'bg-slate-100 text-slate-600': order.status === 'served',
+                                        'bg-green-100 text-green-700': order.status === 'ready' || order.status === 'completed',
+                                        'bg-teal-100 text-teal-700': order.status === 'served',
+                                        'bg-red-100 text-red-600': order.status === 'cancelled',
                                     }"
                                     x-text="order.status_label"
                                 ></span>
@@ -545,6 +546,7 @@
 const CURRENCY = '{{ $restaurant->currency ?? "VND" }}';
 const TABLE_TOKEN = '{{ $table->qr_token }}';
 const CART_KEY = 'qr_cart_' + TABLE_TOKEN;
+const LOCAL_ORDERS_KEY = 'qr_orders_' + TABLE_TOKEN;
 const ORDERS_URL = "{{ route('menu.session-orders', ['restaurant' => $restaurant->slug, 'table' => $table->qr_token]) }}";
 const ORDER_URL = "{{ route('menu.store-order', ['restaurant' => $restaurant->slug, 'table' => $table->qr_token]) }}";
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
@@ -573,11 +575,15 @@ document.addEventListener('alpine:init', () => {
 
         init() {
             try { this.cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { this.cart = []; }
+            // Khôi phục đơn từ localStorage ngay lập tức
+            const localOrders = this.loadLocalOrders();
+            if (localOrders.length > 0 && this.orders.length === 0) {
+                this.orders = localOrders;
+            }
             this.activeCategory = this.visibleCategories[0]?.id || null;
             
             // Listen to global events if needed
             window.addEventListener('open-orders', () => this.openOrders());
-            window.addEventListener('call-waiter', () => this.callWaiter());
             
             @if(request()->query('ordered')) setTimeout(() => this.openOrders(), 600); @endif
             
@@ -643,27 +649,77 @@ document.addEventListener('alpine:init', () => {
             this.submitting = true;
             try {
                 const res = await fetch(ORDER_URL, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
                     body: JSON.stringify({ cart: this.cart, table_id: this.selectedTableId, customer_name: this.customerName, note: this.orderNote })
                 });
                 const data = await res.json();
                 if (data.success) {
+                    // Lưu đơn vào localStorage ngay lập tức để không bị mất
+                    const newOrder = {
+                        id: data.order_id,
+                        order_code: data.order_code,
+                        status: 'pending',
+                        status_label: 'Đang chờ xác nhận',
+                        total: data.total,
+                        created_at: new Date().toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}),
+                        items: this.cart.map(l => ({ name: l.name, quantity: l.qty, status: 'pending', note: l.note || '' }))
+                    };
+                    this.saveLocalOrder(newOrder);
                     this.cart = []; this.saveCart(); this.cartOpen = false;
                     this.showToast('Đã gửi đơn #' + data.order_code);
                     await this.refreshOrders();
-                    setTimeout(() => { this.ordersOpen = true; }, 500);
+                    setTimeout(() => { this.ordersOpen = true; }, 400);
                 } else this.showToast(data.message, 'error');
-            } catch { this.showToast('Lỗi kết nối', 'error'); } 
+            } catch (e) { this.showToast('Lỗi kết nối. Vui lòng thử lại.', 'error'); } 
             finally { this.submitting = false; }
         },
 
         async openOrders() { this.ordersOpen = true; await this.refreshOrders(); },
         async refreshOrders() {
             this.ordersLoading = true;
+            // Hiện ngay từ localStorage trước để UX mượt mà
+            const local = this.loadLocalOrders();
+            if (local.length > 0) this.orders = local;
             try {
-                const res = await fetch(ORDERS_URL);
-                this.orders = (await res.json()).orders || [];
-            } catch {} finally { this.ordersLoading = false; }
+                const res = await fetch(ORDERS_URL, { credentials: 'same-origin' });
+                const serverOrders = (await res.json()).orders || [];
+                if (serverOrders.length > 0) {
+                    // Server có data → dùng server (có trạng thái mới nhất)
+                    // Nhưng merge với local để không mất đơn nào
+                    this.orders = this.mergeOrders(serverOrders, local);
+                    // Cập nhật localStorage với trạng thái mới
+                    this.saveLocalOrders(this.orders);
+                } else if (local.length === 0) {
+                    this.orders = [];
+                }
+                // Nếu server trả về rỗng nhưng local có data → giữ local
+            } catch (e) {
+                // Mạng lỗi → vẫn hiện từ localStorage
+                if (local.length > 0) this.orders = local;
+            } finally { this.ordersLoading = false; }
+        },
+
+        // Gộp đơn server và local, ưu tiên trạng thái từ server
+        mergeOrders(serverOrders, localOrders) {
+            const serverIds = new Set(serverOrders.map(o => o.id));
+            const localOnly = localOrders.filter(o => !serverIds.has(o.id));
+            return [...serverOrders, ...localOnly].sort((a, b) => b.id - a.id);
+        },
+
+        // Lưu/load đơn hàng từ localStorage
+        saveLocalOrder(order) {
+            const orders = this.loadLocalOrders();
+            const idx = orders.findIndex(o => o.id === order.id);
+            if (idx >= 0) orders[idx] = order; else orders.unshift(order);
+            localStorage.setItem(LOCAL_ORDERS_KEY, JSON.stringify(orders.slice(0, 10)));
+        },
+        saveLocalOrders(orders) {
+            localStorage.setItem(LOCAL_ORDERS_KEY, JSON.stringify(orders.slice(0, 10)));
+        },
+        loadLocalOrders() {
+            try { return JSON.parse(localStorage.getItem(LOCAL_ORDERS_KEY) || '[]'); } catch { return []; }
         },
         getStepIndex(status) {
             const steps = ['pending','confirmed','preparing','ready','served'];
