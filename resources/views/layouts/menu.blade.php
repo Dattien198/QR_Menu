@@ -88,9 +88,9 @@
 
     @yield('styles')
 </head>
-<body class="antialiased">
+<body class="antialiased" x-data="menuApp()" x-init="init()">
 
-<div class="menu-shell" x-data="menuApp()" x-init="init()">
+<div class="menu-shell">
 
     {{-- ── Header ── --}}
     <header class="menu-header bg-white/95 backdrop-blur-xl border-b border-slate-200/70 shadow-sm">

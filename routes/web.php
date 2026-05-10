@@ -23,6 +23,7 @@ use App\Http\Controllers\MenuController;
 Route::get('/menu/{restaurant}/{table}', [MenuController::class, 'index'])->name('menu.index');
 Route::post('/menu/{restaurant}/{table}/order', [MenuController::class, 'storeOrder'])->name('menu.store-order');
 Route::get('/menu/{restaurant}/{table}/orders', [MenuController::class, 'sessionOrders'])->name('menu.session-orders');
+Route::post('/menu/{restaurant}/{table}/order/{order}/cancel', [MenuController::class, 'cancelOrder'])->name('menu.cancel-order');
 
 // QR Code proxy (fallback if storage:link fails)
 Route::get('/qr-code/{token}', [TableController::class, 'showQrCode'])->name('qr.show');

@@ -511,10 +511,20 @@
                                 </template>
                             </div>
 
-                            {{-- Total --}}
-                            <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                                <span class="text-sm font-bold text-slate-500">Tổng cộng</span>
-                                <span class="text-lg font-black tc" x-text="fmt(order.total)"></span>
+                            {{-- Total + Hủy đơn --}}
+                            <div class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center gap-3">
+                                <div>
+                                    <div class="text-xs text-slate-400 font-medium">Tổng cộng</div>
+                                    <div class="text-lg font-black tc" x-text="fmt(order.total)"></div>
+                                </div>
+                                {{-- Chỉ hiện nút hủy khi đơn đang chờ --}}
+                                <button x-show="order.status === 'pending'"
+                                    @click="confirmCancel(order)"
+                                    class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl text-sm transition active:scale-95 flex items-center gap-1.5 border border-red-100">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    Hủy đơn
+                                </button>
+                                <span x-show="order.status !== 'pending'" class="text-xs text-slate-400 italic">Không thể hủy</span>
                             </div>
                         </div>
                     </template>
@@ -525,6 +535,27 @@
                 <button @click="refreshOrders()" :class="ordersLoading ? 'opacity-60 cursor-wait' : ''" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
                     <svg :class="ordersLoading ? 'animate-spin' : ''" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <span x-text="ordersLoading ? 'Đang làm mới...' : 'Làm mới trạng thái'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+{{-- CANCEL CONFIRM DIALOG --}}
+<template x-teleport="body">
+    <div x-show="cancelTarget" x-cloak class="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div x-show="cancelTarget" x-transition.opacity class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" @click="cancelTarget = null"></div>
+        <div x-show="cancelTarget" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div class="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-7 h-7 text-red-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-900 mb-1">Hủy đơn hàng?</h3>
+            <p class="text-sm text-slate-500 mb-5" x-text="cancelTarget ? 'Bạn muốn hủy đơn #' + cancelTarget.order_code + ' không? Hành động này không thể hoàn tác.' : ''"></p>
+            <div class="flex gap-3">
+                <button @click="cancelTarget = null" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">Giữ lại</button>
+                <button @click="doCancel()" :disabled="cancelling" class="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-sm transition disabled:opacity-60 flex items-center justify-center gap-1.5">
+                    <svg x-show="cancelling" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                    <span x-text="cancelling ? 'Đang hủy...' : 'Hủy đơn'"></span>
                 </button>
             </div>
         </div>
@@ -549,6 +580,7 @@ const CART_KEY = 'qr_cart_' + TABLE_TOKEN;
 const LOCAL_ORDERS_KEY = 'qr_orders_' + TABLE_TOKEN;
 const ORDERS_URL = "{{ route('menu.session-orders', ['restaurant' => $restaurant->slug, 'table' => $table->qr_token]) }}";
 const ORDER_URL = "{{ route('menu.store-order', ['restaurant' => $restaurant->slug, 'table' => $table->qr_token]) }}";
+const CANCEL_URL_BASE = "{{ url('/menu/' . $restaurant->slug . '/' . $table->qr_token . '/order/__ORDER__/cancel') }}";
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
 const fmtNum = new Intl.NumberFormat('vi-VN', { style: CURRENCY === 'VND' ? 'decimal' : 'currency', currency: CURRENCY, maximumFractionDigits: 0 });
@@ -568,6 +600,7 @@ document.addEventListener('alpine:init', () => {
         cart: [], cartOpen: false, selectedTableId: {{ $table->id }}, customerName: '', orderNote: '', submitting: false,
         
         orders: @json($sessionOrders), ordersOpen: false, ordersLoading: false,
+        cancelTarget: null, cancelling: false,
         toast: { show: false, message: '', type: 'success' },
 
         get visibleCategories() { return this.categories.filter(c => c.menu_items && c.menu_items.length > 0); },
@@ -679,24 +712,19 @@ document.addEventListener('alpine:init', () => {
         async openOrders() { this.ordersOpen = true; await this.refreshOrders(); },
         async refreshOrders() {
             this.ordersLoading = true;
-            // Hiện ngay từ localStorage trước để UX mượt mà
-            const local = this.loadLocalOrders();
+            // Hiện ngay từ localStorage trước để UX mượt mà (bỏ qua đơn đã hủy)
+            const local = this.loadLocalOrders().filter(o => o.status !== 'cancelled');
             if (local.length > 0) this.orders = local;
             try {
                 const res = await fetch(ORDERS_URL, { credentials: 'same-origin' });
-                const serverOrders = (await res.json()).orders || [];
+                const serverOrders = ((await res.json()).orders || []).filter(o => o.status !== 'cancelled');
                 if (serverOrders.length > 0) {
-                    // Server có data → dùng server (có trạng thái mới nhất)
-                    // Nhưng merge với local để không mất đơn nào
                     this.orders = this.mergeOrders(serverOrders, local);
-                    // Cập nhật localStorage với trạng thái mới
                     this.saveLocalOrders(this.orders);
                 } else if (local.length === 0) {
                     this.orders = [];
                 }
-                // Nếu server trả về rỗng nhưng local có data → giữ local
             } catch (e) {
-                // Mạng lỗi → vẫn hiện từ localStorage
                 if (local.length > 0) this.orders = local;
             } finally { this.ordersLoading = false; }
         },
@@ -721,6 +749,40 @@ document.addEventListener('alpine:init', () => {
         loadLocalOrders() {
             try { return JSON.parse(localStorage.getItem(LOCAL_ORDERS_KEY) || '[]'); } catch { return []; }
         },
+
+        // Xác nhận hủy đơn
+        confirmCancel(order) {
+            this.cancelTarget = order;
+        },
+        async doCancel() {
+            if (!this.cancelTarget || this.cancelling) return;
+            this.cancelling = true;
+            const order = this.cancelTarget;
+            try {
+                const url = CANCEL_URL_BASE.replace('__ORDER__', order.id);
+                const res = await fetch(url, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF },
+                });
+                const data = await res.json();
+                if (data.success) {
+                    // Xóa luôn đơn khỏi danh sách
+                    this.orders = this.orders.filter(o => o.id !== order.id);
+                    this.saveLocalOrders(this.orders);
+                    this.cancelTarget = null;
+                    this.showToast(data.message);
+                } else {
+                    this.showToast(data.message, 'error');
+                    this.cancelTarget = null;
+                }
+            } catch {
+                this.showToast('Lỗi kết nối, vui lòng thử lại.', 'error');
+            } finally {
+                this.cancelling = false;
+            }
+        },
+
         getStepIndex(status) {
             const steps = ['pending','confirmed','preparing','ready','served'];
             return steps.indexOf(status);

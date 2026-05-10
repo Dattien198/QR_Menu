@@ -245,6 +245,46 @@ class MenuController extends Controller
         ]);
     }
 
+    /**
+     * Cancel a pending order (customer-initiated).
+     */
+    public function cancelOrder($restaurantSlug, $qrToken, Order $order, Request $request)
+    {
+        $restaurant = Restaurant::where('slug', $restaurantSlug)->firstOrFail();
+        $table = RestaurantTable::where('qr_token', $qrToken)
+            ->whereHas('branch', fn($q) => $q->where('restaurant_id', $restaurant->id))
+            ->firstOrFail();
+
+        // Xác minh đơn thuộc phiên này (bảo vệ tránh hủy đơn người khác)
+        $sessionToken = $request->session()->get('order_session_' . $table->id);
+        if (!$sessionToken || $order->session_token !== $sessionToken) {
+            return response()->json(['success' => false, 'message' => 'Không có quyền hủy đơn này.'], 403);
+        }
+
+        // Chỉ hủy được khi đơn còn ở trạng thái pending
+        if ($order->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn hàng đã được xác nhận, không thể hủy.',
+            ], 422);
+        }
+
+        $order->update(['status' => 'cancelled']);
+
+        // Nếu bàn không còn đơn nào đang xử lý → trả bàn về trống
+        $hasActive = Order::where('restaurant_table_id', $table->id)
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->exists();
+        if (!$hasActive) {
+            $table->update(['status' => 'empty']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã hủy đơn #' . $order->order_code,
+        ]);
+    }
+
     private function statusLabel(string $status): string
     {
         return match ($status) {
